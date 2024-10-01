@@ -1,0 +1,126 @@
+# 0925 Core Concepts (1/2) by Harry
+
+# 前言
+
+我們已經了解系統設計面試如何準備、在面試的時候的do’s and don’ts，現在要開始學習系統設計的核心觀念，以了解實際在做設計時，哪些概念是必須了解的。本章會介紹核心觀念的前半部分: **Scaling(擴展性)、Consistency(一致性)、Locking(鎖定性)、Indexing(索引性)**
+
+## 擴展性（Scaling）
+
+當使用者或流量不斷增加，我們依然期望系統能提供高效率的服務、不導致網頁當掉，我們可以透過投入更多的資源 (e.g. 多增加一台server)，讓系統有足夠資源可以應付大流量與請求。我們將其稱之為擴展性，而擴展性又可以分成水平擴展跟垂直擴展:
+
+- **水平擴展 (Horizontal scaling)**：
+    
+    ![image.png](0925%20Core%20Concepts%20(1%202)%20by%20Harry%2010afadd59b0f8040bb03ede94a5bfd33/image.png)
+    
+
+如同「影分身之術」一樣，系統可以透過增加更多伺服器來提高其容量。那怎麼把每一個請求指派給不同伺服器呢? 這時候可以用**負載平衡器 (Load Balancer)**根據策略分配到這群伺服器上，Load Balancer就像是PM一樣負責指派與管理工作。
+
+優點:
+
+1. 理論上可以“無限”擴展運算能力 ($$夠多的話)。
+2. 滾動式更新 (Rolling Update): 有新版本要發布的時候，能在背景建置好新的伺服器，完成後負載平衡器再將流量切換過去，整個過程不需要任何停機時間。
+3. 易於管理故障的伺服器: 負載平衡器會定期檢查背後伺服器的狀態。
+
+注意: 缺乏經驗的候選人往往會犯兩個錯誤：
+
+- 即使不必要，過早地使用水平擴展來解決任何性能問題。
+- 忽視對系統其他部分的影響 → 工作分配 、資料分配的問題，導致更複雜:
+    - 工作分配 (Work Distribution): 要先分析Load Balancer平衡的策略，一般工作以Round Robin、異步工作以Queue就足夠，但根據題目也會有不同的策略。
+    - 資料分配 (Data Distribution): 讓單一節點可以拿到所需資料，而不需要跟其他節點溝通。另外以地理位置來說同一個地區/洲的資料盡量放在一起 (許多PaaS如Azure都這樣做)
+- **垂直擴展 (Vertical scaling)**：
+
+![image.png](0925%20Core%20Concepts%20(1%202)%20by%20Harry%2010afadd59b0f8040bb03ede94a5bfd33/image%201.png)
+
+ 
+
+就像「人類變成巨人」一樣通過增加單一機器的資源來提高其容量。垂直擴展實際上需要的增量複雜度更少。如果能[正確估算](https://www.notion.so/0918-Fermi-Estimation-By-Allen-105fadd59b0f808c9e33f2fdaa0acfff?pvs=21)工作負載並確定在未來可以進行垂直擴展，通常比水平擴展更好。
+
+## **垂直擴展的缺點**
+
+| **缺點** | **說明** |
+| --- | --- |
+| **成本高** | 增加硬體資源通常需要昂貴的設備，特別是高性能伺服器的價格非常高。 |
+| **單點故障風險** | 依賴單一伺服器意味著如果該伺服器出現故障，整個系統將無法運行，導致業務中斷。 |
+| **擴展性有限** | 每台伺服器的擴展能力是有限的，當達到硬體極限時，無法再進一步提升性能。 |
+| **維護複雜性** | 隨著硬體升級，系統配置和維護變得更加複雜，可能需要專業知識來管理和維護高性能伺服器。 |
+| **不易於實現彈性擴展** | 垂直擴展不如水平擴展靈活，無法根據需求快速增加或減少資源。 |
+| **升級時間長** | 硬體升級可能需要停機時間，這對於需要高可用性的應用來說是一個問題。 |
+
+## 一致性 (Consistency)
+
+此核心概念等同資料庫[ACID](https://zh.wikipedia.org/zh-tw/ACID)中的C一樣，確保每一次Transaction在開始以及結束時資料庫的完整性不被破壞。然而，一致性有強有弱，每個系統都有不同的要求:
+
+- 強一致性 (Strongly Consistent): 確保資料寫入資料庫時，所有的讀取都一定能反映該寫入。e.g. 銀行系統，帳戶A轉帳給帳戶B時，A看到帳款轉出同時B也要看到帳款被轉入 (在OS中通常會用Lock來處理這類事情)
+- 弱一致性(Weakly Consistent) 或 最終一致性 (Eventually Consistent): 允許數據在短時間內還未更新 e.g. 用戶在Twitter (I don’t like to call it X)上發佈一則推文，其追蹤者在幾秒鐘後才看到是允許的
+
+Note: 一個大型系統是可能存在強一致性與弱一致性，e.g. 電商網站上(如蝦皮)，商品描述不一定是最新的，但庫存則一定要反應是最新的 (免得下完訂單才發現已售罄)
+
+## 鎖定性 (Locking)
+
+在上個觀念提到銀行系統會用Lock去確保交易後資料庫的一致性，簡單來說就是某個共享資源一次只能讓一個人訪問 (例如只能讓一個人通過的吊橋)，若是有多個用戶同時間想去訪問一個共享資源，我們稱之為[Race Condition](https://myapollo.com.tw/blog/interview-question-race-condition/)。而Lock確保只有一個客戶端可以訪問該共享資源。
+
+在大部分系統設計中，我們都要考慮用Lock去解決Race Condition問題，特別要注意以下三點:
+
+- **鎖的粒度 (Granularity of the lock)**: 鎖要盡量小、鎖盡可能少的東西。例如在更新某個用戶的個人資料時，我們只希望鎖定該用戶而不是所有用戶 (不然其他用戶就會發現怎麼不能更新資料了)
+- **鎖的持續時間 (Duration of the lock)**: 鎖的時間盡可能短。例如在更新用戶的個人資料，我們希望只在更新期間鎖定，而不是整個request期間。
+- **是否可以繞過鎖 (Whether we can bypass the lock)**: 在大部分系統中，如果資料變動頻率不會太頻繁、也不會有競爭狀態 (如Race Condition)，我們可以使用[**「樂觀鎖」**](https://medium.com/dean-lin/%E7%9C%9F%E6%AD%A3%E7%90%86%E8%A7%A3%E8%B3%87%E6%96%99%E5%BA%AB%E7%9A%84%E6%82%B2%E8%A7%80%E9%8E%96-vs-%E6%A8%82%E8%A7%80%E9%8E%96-2cabb858726d) 來應對，特別是預計要完成的工作是Read-only或可以被Rollback。但如果是要求強一致性的系統，就不能這麼做。
+    
+    ![image.png](0925%20Core%20Concepts%20(1%202)%20by%20Harry%2010afadd59b0f8040bb03ede94a5bfd33/image%202.png)
+    
+
+## 索引性 (Indexing)
+
+Index是為了讓查詢速度更快，基本有HashMap跟Binary Search兩種方法:
+
+| Method | Read Time Complexity | Downside |
+| --- | --- | --- |
+| HashMap | O(1) | Extra space to build HashMap |
+| Binary Search | O(log n) | Sort beforehand → O(n log n) |
+
+還有不同類型的索引:
+
+- 資料庫中的索引 (Indexing in Databases):
+    
+    大多數RDBMS都可以讓User建立索引，但非無限制。例如DynamoDB允許[建立許多二級索引](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/SecondaryIndexes.html)，像Redis則仰賴User自己設計索引策略。
+    
+- 專業索引 (Specialized Indexes):
+    
+    除了基本的索引策略外，還有許多專門的索引用於解決特定問題。
+    
+    | Method | Example | Database Support |
+    | --- | --- | --- |
+    | 地理空間索引 | 查找附近餐廳或加油站 | ElasticSearch - Lucene, PostgresSQL - PostGIS |
+    | 向量索引 | 查找類似圖片或文件 | ElasticSearch - Lucene |
+    | 全文索引 | 搜索文件或推文 | ElasticSearch - Lucene |
+
+[ElasticSearch簡單介紹](https://www.omniwaresoft.com.tw/techcolumn/elastic-techcolumn/elasticsearch-basic-concept/): 
+
+ElasticSearch是一個分散式搜索和分析引擎，含有結構與非結構化數據，利用倒排索引和全文檢索來做real-time分析。
+
+- 倒排索引 (Inverted index)
+紀錄每個字詞出現在哪些文檔及文檔中的位置，藉由搜尋字詞，快速地定位到有包含這些字詞的文檔及其出現位置。
+- 全文檢索 (Full-text search)
+將非結構化的數據提取出來並重新組織，使其變得有一定結構，並對此結構的數據進行搜尋。因此先建立索引，再對索引進行搜尋的過程。
+
+![image.png](0925%20Core%20Concepts%20(1%202)%20by%20Harry%2010afadd59b0f8040bb03ede94a5bfd33/image%203.png)
+
+### Reference
+
+- [0918 補充 Fermi Estimation By Allen](https://www.notion.so/0918-Fermi-Estimation-By-Allen-105fadd59b0f808c9e33f2fdaa0acfff?pvs=21)
+- https://zh.wikipedia.org/zh-tw/ACID
+- https://myapollo.com.tw/blog/interview-question-race-condition/
+- https://medium.com/dean-lin/真正理解資料庫的悲觀鎖-vs-樂觀鎖-2cabb858726d
+- https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/SecondaryIndexes.html
+- https://www.omniwaresoft.com.tw/techcolumn/elastic-techcolumn/elasticsearch-basic-concept/
+
+[0925-Tim](https://www.notion.so/0925-Tim-4f84f5a3d1e44ab288cc70b91e5e3f5e?pvs=21)
+
+[0925-分區、分表、分庫和分片by Eos](https://www.notion.so/0925-by-Eos-10cfadd59b0f80aab5a0c8722b832883?pvs=21)
+
+【尚硅谷】【JUC】30 多线程锁之悲观锁和乐观锁介绍: 
+
+[https://www.youtube.com/watch?v=B9um6xZB1BM](https://www.youtube.com/watch?v=B9um6xZB1BM)
+
+[0925 Core Concepts by Allen](https://www.notion.so/0925-Core-Concepts-by-Allen-10dfadd59b0f80399877df77c48d7b11?pvs=21)
+
+[補充：load balancer by Allen](https://www.notion.so/load-balancer-by-Allen-10dfadd59b0f80b18048d788cb1fe1cf?pvs=21)
