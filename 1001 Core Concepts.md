@@ -1,4 +1,6 @@
-# 1001 Core Concepts (2/2)
+# 1001 Core Concepts (2/2) 
+
+trying to editing in MD......... by Eos
 
 1. Scaling(擴展性)
 2. Consistency(一致性)
